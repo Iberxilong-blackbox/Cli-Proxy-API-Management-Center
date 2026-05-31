@@ -33,12 +33,14 @@ import {
   getTypeColor,
   getTypeLabel,
   hasAuthFileStatusMessage,
+  isQuarantined,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
   parsePriorityValue,
   type QuotaProviderType,
   type ResolvedTheme,
 } from '@/features/authFiles/constants';
+import type { AuthFileItem } from '@/types';
 import { AuthFileCard } from '@/features/authFiles/components/AuthFileCard';
 import { AuthFileModelsModal } from '@/features/authFiles/components/AuthFileModelsModal';
 import { AuthFilesPrefixProxyEditorModal } from '@/features/authFiles/components/AuthFilesPrefixProxyEditorModal';
@@ -58,6 +60,7 @@ import {
   type AuthFilesSortMode,
 } from '@/features/authFiles/uiState';
 import { useAuthStore, useNotificationStore, useThemeStore } from '@/stores';
+import { authFilesApi } from '@/services/api/authFiles';
 import styles from './AuthFilesPage.module.scss';
 
 const easePower3Out = (progress: number) => 1 - (1 - progress) ** 4;
@@ -88,6 +91,7 @@ export function AuthFilesPage() {
   const [filter, setFilter] = useState<'all' | string>('all');
   const [problemOnly, setProblemOnly] = useState(false);
   const [disabledOnly, setDisabledOnly] = useState(false);
+  const [quarantinedOnly, setQuarantinedOnly] = useState(false);
   const [compactMode, setCompactMode] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -202,6 +206,9 @@ export function AuthFilesPage() {
       if (typeof persisted.disabledOnly === 'boolean') {
         setDisabledOnly(persisted.disabledOnly);
       }
+      if (typeof persisted.quarantinedOnly === 'boolean') {
+        setQuarantinedOnly(persisted.quarantinedOnly);
+      }
       if (
         typeof persistedCompactMode !== 'boolean' &&
         typeof persisted.compactMode === 'boolean'
@@ -245,6 +252,7 @@ export function AuthFilesPage() {
       filter,
       problemOnly,
       disabledOnly,
+      quarantinedOnly,
       compactMode,
       search,
       page,
@@ -262,6 +270,7 @@ export function AuthFilesPage() {
     pageSize,
     pageSizeByMode,
     problemOnly,
+    quarantinedOnly,
     search,
     sortMode,
     uiStateHydrated,
@@ -330,6 +339,34 @@ export function AuthFilesPage() {
     await Promise.all([loadFiles(), loadExcluded(), loadModelAlias()]);
   }, [loadFiles, loadExcluded, loadModelAlias]);
 
+  const handleUnquarantine = useCallback(
+    async (file: AuthFileItem) => {
+      const id = String(file.name ?? '');
+      try {
+        await authFilesApi.unquarantine(id);
+        showNotification(`Unquarantined ${id}`, 'success');
+        await loadFiles();
+      } catch (err: unknown) {
+        showNotification(`Unquarantine failed: ${err instanceof Error ? err.message : ''}`, 'error');
+      }
+    },
+    [loadFiles, showNotification],
+  );
+
+  const handleUnfreeze = useCallback(
+    async (file: AuthFileItem) => {
+      const id = String(file.name ?? '');
+      try {
+        await authFilesApi.unfreeze(id);
+        showNotification(`Unfrozen ${id}`, 'success');
+        await loadFiles();
+      } catch (err: unknown) {
+        showNotification(`Unfreeze failed: ${err instanceof Error ? err.message : ''}`, 'error');
+      }
+    },
+    [loadFiles, showNotification],
+  );
+
   useHeaderRefresh(handleHeaderRefresh);
 
   useEffect(() => {
@@ -360,9 +397,10 @@ export function AuthFilesPage() {
       files.filter((file) => {
         if (problemOnly && !hasAuthFileStatusMessage(file)) return false;
         if (disabledOnly && file.disabled !== true) return false;
+        if (quarantinedOnly && !isQuarantined(file)) return false;
         return true;
       }),
-    [disabledOnly, files, problemOnly]
+    [disabledOnly, files, problemOnly, quarantinedOnly]
   );
 
   const sortOptions = useMemo(
@@ -439,16 +477,29 @@ export function AuthFilesPage() {
     () => sorted.filter((file) => !isRuntimeOnlyAuthFile(file)),
     [sorted]
   );
+  const filteredStatusTargetNames = useMemo(
+    () => selectableFilteredItems.map((file) => file.name),
+    [selectableFilteredItems]
+  );
   const selectedNames = useMemo(() => Array.from(selectedFiles), [selectedFiles]);
   const selectedHasStatusUpdating = useMemo(
     () => selectedNames.some((name) => statusUpdating[name] === true),
     [selectedNames, statusUpdating]
+  );
+  const filteredHasStatusUpdating = useMemo(
+    () => filteredStatusTargetNames.some((name) => statusUpdating[name] === true),
+    [filteredStatusTargetNames, statusUpdating]
   );
   const batchStatusButtonsDisabled =
     disableControls ||
     selectedNames.length === 0 ||
     batchStatusUpdating ||
     selectedHasStatusUpdating;
+  const filteredStatusButtonsDisabled =
+    disableControls ||
+    filteredStatusTargetNames.length === 0 ||
+    batchStatusUpdating ||
+    filteredHasStatusUpdating;
 
   const copyTextWithNotification = useCallback(
     async (text: string) => {
@@ -681,6 +732,21 @@ export function AuthFilesPage() {
               {t('auth_files.upload_button')}
             </Button>
             <Button
+              size="sm"
+              onClick={() => batchSetStatus(filteredStatusTargetNames, true)}
+              disabled={filteredStatusButtonsDisabled}
+            >
+              {t('auth_files.batch_enable_all')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => batchSetStatus(filteredStatusTargetNames, false)}
+              disabled={filteredStatusButtonsDisabled}
+            >
+              {t('auth_files.batch_disable_all')}
+            </Button>
+            <Button
               variant="danger"
               size="sm"
               onClick={() =>
@@ -794,6 +860,19 @@ export function AuthFilesPage() {
                     </div>
                     <div className={styles.filterToggleCard}>
                       <ToggleSwitch
+                        checked={quarantinedOnly}
+                        onChange={(value) => {
+                          setQuarantinedOnly(value);
+                          setPage(1);
+                        }}
+                        ariaLabel="Quarantined only"
+                        label={
+                          <span className={styles.filterToggleLabel}>Quarantined</span>
+                        }
+                      />
+                    </div>
+                    <div className={styles.filterToggleCard}>
+                      <ToggleSwitch
                         checked={compactMode}
                         onChange={(value) => setCompactMode(value)}
                         ariaLabel={t('auth_files.compact_mode_label')}
@@ -838,6 +917,8 @@ export function AuthFilesPage() {
                     onDelete={handleDelete}
                     onToggleStatus={handleStatusToggle}
                     onToggleSelect={toggleSelect}
+                    onUnquarantine={handleUnquarantine}
+                    onUnfreeze={handleUnfreeze}
                   />
                 ))}
               </div>

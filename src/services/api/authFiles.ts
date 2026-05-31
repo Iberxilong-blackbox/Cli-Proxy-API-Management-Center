@@ -10,6 +10,13 @@ import { parseTimestampMs } from '@/utils/timestamp';
 type StatusError = { status?: number };
 type AuthFileStatusResponse = { status: string; disabled: boolean };
 type AuthFileEntry = AuthFilesResponse['files'][number];
+type AuthFileQuotaRefreshResponse = {
+  status: string;
+  body?: string;
+  auth?: AuthFileEntry;
+  usage_pct?: number;
+  usage_pct_percent?: number;
+};
 export type AuthFileFieldsPatch = {
   prefix?: string;
   proxy_url?: string;
@@ -408,6 +415,15 @@ export const authFilesApi = {
 
   setStatus: (name: string, disabled: boolean) =>
     apiClient.patch<AuthFileStatusResponse>('/auth-files/status', { name, disabled }),
+
+  unquarantine: (id: string) =>
+    apiClient.patch<{ status: string }>('/auth-files/unquarantine', { id }),
+
+  unfreeze: (id: string) =>
+    apiClient.patch<{ status: string }>('/auth-files/unfreeze', { id }),
+
+  refreshQuota: (id: string) =>
+    apiClient.patch<AuthFileQuotaRefreshResponse>('/auth-files/refresh-quota', { id }),
 
   patchFields: (name: string, fields: AuthFileFieldsPatch) =>
     apiClient.patch('/auth-files/fields', { name, ...fields }),

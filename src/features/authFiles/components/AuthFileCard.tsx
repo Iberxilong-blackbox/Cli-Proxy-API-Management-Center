@@ -27,6 +27,8 @@ import {
   getAuthFileStatusMessage,
   getTypeColor,
   getTypeLabel,
+  isFrozen,
+  isQuarantined,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
   parsePriorityValue,
@@ -55,6 +57,8 @@ export type AuthFileCardProps = {
   onDelete: (name: string) => void;
   onToggleStatus: (file: AuthFileItem, enabled: boolean) => void;
   onToggleSelect: (name: string) => void;
+  onUnquarantine?: (file: AuthFileItem) => void;
+  onUnfreeze?: (file: AuthFileItem) => void;
 };
 
 const resolveQuotaType = (file: AuthFileItem): QuotaProviderType | null => {
@@ -81,7 +85,14 @@ export function AuthFileCard(props: AuthFileCardProps) {
     onDelete,
     onToggleStatus,
     onToggleSelect,
+    onUnquarantine,
+    onUnfreeze,
   } = props;
+
+  const quarantined = isQuarantined(file);
+  const frozen = isFrozen(file);
+  const quarantinedAt = file['quarantined_at'];
+  const usagePct = typeof file['usage_pct'] === 'number' ? file['usage_pct'] : undefined;
 
   const recentBuckets = normalizeRecentRequestBuckets(file.recent_requests ?? file.recentRequests);
   const fileStats = {
@@ -127,22 +138,35 @@ export function AuthFileCard(props: AuthFileCardProps) {
 
   const priorityValue = parsePriorityValue(file.priority ?? file['priority']);
   const noteValue = typeof file.note === 'string' ? file.note.trim() : '';
-  const stateLabel = isRuntimeOnly
-    ? t('auth_files.type_virtual') || '虚拟认证文件'
-    : file.disabled
-      ? t('auth_files.health_status_disabled')
-      : hasStatusWarning
-        ? t('auth_files.health_status_warning')
-        : rawStatusMessage
-          ? t('auth_files.health_status_healthy')
-          : t('auth_files.status_toggle_label');
-  const stateBadgeClass = isRuntimeOnly
-    ? styles.stateBadgeVirtual
-    : file.disabled
-      ? styles.stateBadgeDisabled
-      : hasStatusWarning
-        ? styles.stateBadgeWarning
-        : styles.stateBadgeActive;
+  const stateBadges = [
+    ...(isRuntimeOnly
+      ? [
+          {
+            label: t('auth_files.type_virtual') || '虚拟认证文件',
+            className: styles.stateBadgeVirtual,
+          },
+        ]
+      : []),
+    ...(!isRuntimeOnly && file.disabled
+      ? [{ label: t('auth_files.health_status_disabled'), className: styles.stateBadgeDisabled }]
+      : []),
+    ...(quarantined
+      ? [{ label: 'Quarantined', className: styles.stateBadgeQuarantined }]
+      : []),
+    ...(frozen ? [{ label: 'Frozen', className: styles.stateBadgeFrozen }] : []),
+  ];
+  if (stateBadges.length === 0) {
+    stateBadges.push(
+      hasStatusWarning
+        ? { label: t('auth_files.health_status_warning'), className: styles.stateBadgeWarning }
+        : {
+            label: rawStatusMessage
+              ? t('auth_files.health_status_healthy')
+              : t('auth_files.status_toggle_label'),
+            className: styles.stateBadgeActive,
+          }
+    );
+  }
 
   return (
     <div
@@ -190,7 +214,24 @@ export function AuthFileCard(props: AuthFileCardProps) {
                 >
                   {typeLabel}
                 </span>
-                <span className={`${styles.stateBadge} ${stateBadgeClass}`}>{stateLabel}</span>
+                {stateBadges.map((badge) => (
+                  <span
+                    key={badge.label}
+                    className={`${styles.stateBadge} ${badge.className}`}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+                {quarantined && quarantinedAt && (
+                  <span className={styles.stateBadgeExtra}>
+                    {typeof quarantinedAt === 'string' ? quarantinedAt : ''}
+                  </span>
+                )}
+                {frozen && usagePct !== undefined && (
+                  <span className={styles.stateBadgeExtra}>
+                    {Math.round(usagePct * 100)}% used
+                  </span>
+                )}
               </div>
               <span className={styles.fileName} title={file.name}>
                 {file.name}
@@ -320,7 +361,33 @@ export function AuthFileCard(props: AuthFileCardProps) {
                 </div>
               )}
             </div>
-            {!isRuntimeOnly && (
+            {quarantined && onUnquarantine && (
+              <div className={styles.statusToggle}>
+                <span className={styles.statusToggleLabel}>Quarantined</span>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={disableControls}
+                  onClick={() => onUnquarantine(file)}
+                >
+                  Unquarantine
+                </Button>
+              </div>
+            )}
+            {frozen && onUnfreeze && (
+              <div className={styles.statusToggle}>
+                <span className={styles.statusToggleLabel}>Frozen</span>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={disableControls}
+                  onClick={() => onUnfreeze(file)}
+                >
+                  Unfreeze
+                </Button>
+              </div>
+            )}
+            {!isRuntimeOnly && !quarantined && (
               <div className={styles.statusToggle}>
                 <span className={styles.statusToggleLabel}>
                   {t('auth_files.status_toggle_label')}

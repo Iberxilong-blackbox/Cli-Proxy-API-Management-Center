@@ -37,6 +37,12 @@ export interface AuthFileItem {
   failed?: unknown;
   recent_requests?: RecentRequestBucket[];
   recentRequests?: RecentRequestBucket[];
+  quarantined?: boolean;
+  quarantined_at?: string;
+  frozen?: boolean;
+  usage_pct?: number;
+  freeze_threshold?: number;
+  usage_cycle_reset?: string;
   [key: string]: unknown;
 }
 

@@ -334,6 +334,8 @@
     "batch_download_partial": "下载完成：成功 {{success}} 个，失败 {{failed}} 个",
     "batch_enable": "启用",
     "batch_disable": "禁用",
+    "batch_enable_all": "启用筛选结果",
+    "batch_disable_all": "禁用筛选结果",
     "prefix_proxy_button": "认证文件详情 / 编辑",
     "auth_field_editor_title": "认证文件详情 / 编辑 - {{name}}",
     "prefix_proxy_loading": "正在加载认证文件...",

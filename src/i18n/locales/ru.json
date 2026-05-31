@@ -334,6 +334,8 @@
     "batch_download_partial": "Загрузка завершена: успешно {{success}}, ошибок {{failed}}",
     "batch_enable": "Включить",
     "batch_disable": "Отключить",
+    "batch_enable_all": "Включить по фильтру",
+    "batch_disable_all": "Отключить по фильтру",
     "prefix_proxy_button": "Просмотр / редактирование файла авторизации",
     "auth_field_editor_title": "Просмотр / редактирование файла авторизации - {{name}}",
     "prefix_proxy_loading": "Загрузка файла авторизации...",

@@ -143,6 +143,12 @@ export const normalizeProviderKey = (value: string) => {
   return key;
 };
 
+export const isQuarantined = (file: AuthFileItem): boolean =>
+  file.quarantined === true;
+
+export const isFrozen = (file: AuthFileItem): boolean =>
+  file.frozen === true;
+
 export const getAuthFileStatusMessage = (file: AuthFileItem): string => {
   const raw = file['status_message'] ?? file.statusMessage;
   if (typeof raw === 'string') return raw.trim();

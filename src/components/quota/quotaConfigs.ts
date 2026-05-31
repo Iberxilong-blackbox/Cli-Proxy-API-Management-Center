@@ -41,8 +41,6 @@ import {
   CLAUDE_USAGE_URL,
   CLAUDE_REQUEST_HEADERS,
   CLAUDE_USAGE_WINDOW_KEYS,
-  CODEX_USAGE_URL,
-  CODEX_REQUEST_HEADERS,
   GEMINI_CLI_QUOTA_URL,
   GEMINI_CLI_CODE_ASSIST_URL,
   GEMINI_CLI_REQUEST_HEADERS,
@@ -62,7 +60,6 @@ import {
   parseGeminiCliCodeAssistPayload,
   parseKimiUsagePayload,
   parseXaiBillingPayload,
-  resolveCodexChatgptAccountId,
   resolveCodexPlanType,
   resolveGeminiCliProjectId,
   formatCodexResetLabel,
@@ -425,34 +422,10 @@ const fetchCodexQuota = async (
   file: AuthFileItem,
   t: TFunction
 ): Promise<{ planType: string | null; windows: CodexQuotaWindow[] }> => {
-  const rawAuthIndex = file['auth_index'] ?? file.authIndex;
-  const authIndex = normalizeAuthIndex(rawAuthIndex);
-  if (!authIndex) {
-    throw new Error(t('codex_quota.missing_auth_index'));
-  }
-
   const planTypeFromFile = resolveCodexPlanType(file);
-  const accountId = resolveCodexChatgptAccountId(file);
-
-  const requestHeader: Record<string, string> = {
-    ...CODEX_REQUEST_HEADERS,
-  };
-  if (accountId) {
-    requestHeader['Chatgpt-Account-Id'] = accountId;
-  }
-
-  const result = await apiCallApi.request({
-    authIndex,
-    method: 'GET',
-    url: CODEX_USAGE_URL,
-    header: requestHeader,
-  });
-
-  if (result.statusCode < 200 || result.statusCode >= 300) {
-    throw createStatusError(getApiCallErrorMessage(result), result.statusCode);
-  }
-
-  const payload = parseCodexUsagePayload(result.body ?? result.bodyText);
+  const authId = normalizeStringValue(file.id) ?? file.name;
+  const result = await authFilesApi.refreshQuota(authId);
+  const payload = parseCodexUsagePayload(result.body);
   if (!payload) {
     throw new Error(t('codex_quota.empty_windows'));
   }

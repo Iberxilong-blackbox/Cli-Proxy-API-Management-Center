@@ -334,6 +334,8 @@
     "batch_download_partial": "Download finished: {{success}} succeeded, {{failed}} failed",
     "batch_enable": "Enable",
     "batch_disable": "Disable",
+    "batch_enable_all": "Enable filtered",
+    "batch_disable_all": "Disable filtered",
     "prefix_proxy_button": "Auth File Details / Edit",
     "auth_field_editor_title": "Auth File Details / Edit - {{name}}",
     "prefix_proxy_loading": "Loading auth file...",

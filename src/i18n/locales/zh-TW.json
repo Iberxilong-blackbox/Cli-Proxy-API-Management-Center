@@ -334,6 +334,8 @@
     "batch_download_partial": "下載完成：成功 {{success}} 個，失敗 {{failed}} 個",
     "batch_enable": "啟用",
     "batch_disable": "停用",
+    "batch_enable_all": "啟用篩選結果",
+    "batch_disable_all": "停用篩選結果",
     "prefix_proxy_button": "驗證檔案詳情 / 編輯",
     "auth_field_editor_title": "驗證檔案詳情 / 編輯 - {{name}}",
     "prefix_proxy_loading": "正在載入驗證檔案...",
