@@ -69,9 +69,10 @@ const BATCH_BAR_BASE_TRANSFORM = 'translateX(-50%)';
 const BATCH_BAR_HIDDEN_TRANSFORM = 'translateX(-50%) translateY(56px)';
 const DEFAULT_REGULAR_PAGE_SIZE = 9;
 const DEFAULT_COMPACT_PAGE_SIZE = 12;
+// 修改这里即可固定“复制隔离文件”按钮的目标目录。
+const QUARANTINED_COPY_DESTINATION_PATH = 'C:\\My_project\\chatgpt2api\\data\\auto_import';
 
-const escapeWildcardSearchSegment = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeWildcardSearchSegment = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const buildWildcardSearch = (value: string): RegExp | null => {
   if (!value.includes('*')) return null;
@@ -82,6 +83,7 @@ const buildWildcardSearch = (value: string): RegExp | null => {
 export function AuthFilesPage() {
   const { t } = useTranslation();
   const showNotification = useNotificationStore((state) => state.showNotification);
+  const showConfirmation = useNotificationStore((state) => state.showConfirmation);
   const connectionStatus = useAuthStore((state) => state.connectionStatus);
   const resolvedTheme: ResolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const pageTransitionLayer = usePageTransitionLayer();
@@ -103,6 +105,7 @@ export function AuthFilesPage() {
   const [viewMode, setViewMode] = useState<'diagram' | 'list'>('list');
   const [sortMode, setSortMode] = useState<AuthFilesSortMode>('default');
   const [batchActionBarVisible, setBatchActionBarVisible] = useState(false);
+  const [copyingQuarantined, setCopyingQuarantined] = useState(false);
   const [uiStateHydrated, setUiStateHydrated] = useState(false);
   const floatingBatchActionsRef = useRef<HTMLDivElement>(null);
   const batchActionAnimationRef = useRef<AnimationPlaybackControlsWithThen | null>(null);
@@ -209,10 +212,7 @@ export function AuthFilesPage() {
       if (typeof persisted.quarantinedOnly === 'boolean') {
         setQuarantinedOnly(persisted.quarantinedOnly);
       }
-      if (
-        typeof persistedCompactMode !== 'boolean' &&
-        typeof persisted.compactMode === 'boolean'
-      ) {
+      if (typeof persistedCompactMode !== 'boolean' && typeof persisted.compactMode === 'boolean') {
         setCompactMode(persisted.compactMode);
       }
       if (typeof persisted.search === 'string') {
@@ -228,11 +228,11 @@ export function AuthFilesPage() {
       const regularPageSize =
         typeof persisted.regularPageSize === 'number' && Number.isFinite(persisted.regularPageSize)
           ? clampCardPageSize(persisted.regularPageSize)
-          : legacyPageSize ?? DEFAULT_REGULAR_PAGE_SIZE;
+          : (legacyPageSize ?? DEFAULT_REGULAR_PAGE_SIZE);
       const compactPageSize =
         typeof persisted.compactPageSize === 'number' && Number.isFinite(persisted.compactPageSize)
           ? clampCardPageSize(persisted.compactPageSize)
-          : legacyPageSize ?? DEFAULT_COMPACT_PAGE_SIZE;
+          : (legacyPageSize ?? DEFAULT_COMPACT_PAGE_SIZE);
       setPageSizeByMode({
         regular: regularPageSize,
         compact: compactPageSize,
@@ -339,6 +339,70 @@ export function AuthFilesPage() {
     await Promise.all([loadFiles(), loadExcluded(), loadModelAlias()]);
   }, [loadFiles, loadExcluded, loadModelAlias]);
 
+  const quarantinedCopyableFiles = useMemo(
+    () => files.filter((file) => isQuarantined(file) && !isRuntimeOnlyAuthFile(file)),
+    [files]
+  );
+
+  const handleCopyQuarantined = useCallback(() => {
+    if (quarantinedCopyableFiles.length === 0 || copyingQuarantined) return;
+
+    const destinationPath = QUARANTINED_COPY_DESTINATION_PATH.trim();
+    if (!destinationPath) {
+      showNotification(t('auth_files.copy_quarantined_path_missing'), 'error');
+      return;
+    }
+
+    const names = quarantinedCopyableFiles.map((file) => file.name);
+
+    showConfirmation({
+      title: t('auth_files.copy_quarantined_title'),
+      message: t('auth_files.copy_quarantined_confirm', {
+        count: names.length,
+        path: destinationPath,
+      }),
+      variant: 'secondary',
+      confirmText: t('auth_files.copy_quarantined_confirm_button'),
+      onConfirm: async () => {
+        setCopyingQuarantined(true);
+        try {
+          const result = await authFilesApi.copyQuarantined(names, destinationPath);
+          await loadFiles();
+
+          if (result.failed.length === 0) {
+            showNotification(
+              t('auth_files.copy_quarantined_success', {
+                count: result.copied,
+                path: result.destinationPath,
+              }),
+              'success'
+            );
+          } else {
+            showNotification(
+              t('auth_files.copy_quarantined_partial', {
+                success: result.copied,
+                failed: result.failed.length,
+              }),
+              'warning'
+            );
+          }
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : '';
+          showNotification(`${t('auth_files.copy_quarantined_failed')}: ${errorMessage}`, 'error');
+        } finally {
+          setCopyingQuarantined(false);
+        }
+      },
+    });
+  }, [
+    copyingQuarantined,
+    loadFiles,
+    quarantinedCopyableFiles,
+    showConfirmation,
+    showNotification,
+    t,
+  ]);
+
   const handleUnquarantine = useCallback(
     async (file: AuthFileItem) => {
       const id = String(file.name ?? '');
@@ -347,10 +411,13 @@ export function AuthFilesPage() {
         showNotification(`Unquarantined ${id}`, 'success');
         await loadFiles();
       } catch (err: unknown) {
-        showNotification(`Unquarantine failed: ${err instanceof Error ? err.message : ''}`, 'error');
+        showNotification(
+          `Unquarantine failed: ${err instanceof Error ? err.message : ''}`,
+          'error'
+        );
       }
     },
-    [loadFiles, showNotification],
+    [loadFiles, showNotification]
   );
 
   const handleUnfreeze = useCallback(
@@ -364,7 +431,7 @@ export function AuthFilesPage() {
         showNotification(`Unfreeze failed: ${err instanceof Error ? err.message : ''}`, 'error');
       }
     },
-    [loadFiles, showNotification],
+    [loadFiles, showNotification]
   );
 
   useHeaderRefresh(handleHeaderRefresh);
@@ -732,6 +799,22 @@ export function AuthFilesPage() {
               {t('auth_files.upload_button')}
             </Button>
             <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleCopyQuarantined}
+              disabled={
+                disableControls ||
+                loading ||
+                copyingQuarantined ||
+                quarantinedCopyableFiles.length === 0
+              }
+              loading={copyingQuarantined}
+            >
+              {t('auth_files.copy_quarantined_button', {
+                count: quarantinedCopyableFiles.length,
+              })}
+            </Button>
+            <Button
               size="sm"
               onClick={() => batchSetStatus(filteredStatusTargetNames, true)}
               disabled={filteredStatusButtonsDisabled}
@@ -865,9 +948,11 @@ export function AuthFilesPage() {
                           setQuarantinedOnly(value);
                           setPage(1);
                         }}
-                        ariaLabel="Quarantined only"
+                        ariaLabel={t('auth_files.quarantined_filter_only')}
                         label={
-                          <span className={styles.filterToggleLabel}>Quarantined</span>
+                          <span className={styles.filterToggleLabel}>
+                            {t('auth_files.quarantined_filter_only')}
+                          </span>
                         }
                       />
                     </div>
